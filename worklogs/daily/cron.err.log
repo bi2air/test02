@@ -1,0 +1,9 @@
+error: unexpected argument '--ask-for-approval' found
+
+  tip: to pass '--ask-for-approval' as a value, use '-- --ask-for-approval'
+
+Usage: codex exec [OPTIONS] [PROMPT]
+       codex exec [OPTIONS] <COMMAND> [ARGS]
+
+For more information, try '--help'.
+/Users/binh.nguyen2/working/postcall/scripts/run_daily_worklog.sh:51: no matches found: (GMT+07)

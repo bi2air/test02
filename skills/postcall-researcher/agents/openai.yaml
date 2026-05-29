@@ -1,0 +1,4 @@
+interface:
+  display_name: "Postcall Researcher"
+  short_description: "Research and evaluate postcall taxonomy"
+  default_prompt: "Use $postcall-researcher to review a postcall call-code taxonomy and produce a measurement-backed plan."

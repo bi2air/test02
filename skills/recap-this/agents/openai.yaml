@@ -1,0 +1,4 @@
+interface:
+  display_name: "Recap This"
+  short_description: "Save session recaps to local markdown"
+  default_prompt: "Use $recap-this to save a concise, self-contained recap of this session."
