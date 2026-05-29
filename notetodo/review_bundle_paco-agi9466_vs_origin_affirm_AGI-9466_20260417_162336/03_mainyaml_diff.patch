@@ -1,0 +1,176 @@
+diff --git a/scripts/en_collin_kompato_affirm/main.yaml b/scripts/en_collin_kompato_affirm/main.yaml
+index 0f403ec..5b4f00e 100644
+--- a/scripts/en_collin_kompato_affirm/main.yaml
++++ b/scripts/en_collin_kompato_affirm/main.yaml
+@@ -5375,29 +5375,37 @@ postcall:
+ 
+     # Prompt to detect the call codes (before post-processing)
+     prompt_detect_call_code: |
+-      You are an expert in call disposition classification. Your task is to classify the ## Conversation History below into one to three most relevant call codes. Use the # Context and # Instruction to guide your thinking and decision making.
++      You are an expert in call disposition classification.
++      Classify the ## Conversation History into 1 to 3 most relevant call codes.
++      Use # Context and # Instruction to guide your decision.
+ 
+       # Context:
+-      - The conversation is transcribed from the phone call by Automatic Speech Recognition (ASR). The text may contains some typos or errors, or inaccuracies, unproper punctuation, or incomplete sentences. 
++      - The conversation is transcribed from a phone call by Automatic Speech Recognition (ASR). The text may contain typos, recognition errors, missing punctuation, or incomplete sentences.
+       - The collection agent is marked as "assistant|agent|bot", and the caller is marked as "user|customer|human".
+       - Available call codes below are the codes you can output; definitions and descriptions are authoritative.
+ 
+       # Instruction:
+-      - Read ## Call Code Descriptions to understand the options and then ## Conversation History to make sense of the call. 
+-      - In ## Conversation History, use the user's phrases, utterance as the evidence as user intent. Use the assistant line of query to undertand what is the information is seeking, and then pair that question with user's response to make a complete turn of conversation
+-      - Carefully review the conversation to select one to three call codes that best fit the context and details of the exchange
+-      - Then combine your review and undersanding of the conversation and call code options as the reasoning for your decision. You will use this reasoning to justify your choice of call codes.
+-      - After the first choice of call code, review other call codes if they are alternatives to the first choice. You are encouraged to output three call codes to increase the coverage of the conversation.
+-      - Your output will be a JSON object with XML format <reasoning> </reasoning> and <call_code_list> </call_code_list> tags as in # Output session.
++      - Read ## Call Code Descriptions first, then ## Conversation History.
++      - Use user utterances as primary evidence of intent. Use assistant prompts only to interpret what the user is responding to.
++      - Select only codes supported by evidence in the transcript. Output 1 to 3 codes.
++      - Prefer concise reasoning tied to explicit transcript evidence and code definitions.
++      - Respect code boundaries and stage context (Phone Number / Pre-IDV / Post-IDV).
++      - Stage guidance: treat as Post-IDV only when identity verification is completed (or Mini-Miranda appears, typically after successful IDV). Otherwise stay in Phone Number / Pre-IDV space.
++      - Output plain text wrapped in XML tags exactly as shown in # Output.
+ 
+       #  Notes:
+       - Make sure the reasoning is clear, specific, and grounded to the conversation history and the call code descriptions.
+-      - Consider all possible angles and think before you decide, not just the most appearant call code.
++      - Consider alternatives, but do not over-label when evidence is weak.
+ 
+       # Input Information
+       ## Call Code Descriptions
+       {{call_code_descriptions}}
+ 
++      ## Stage Hints
++      - Current state path (if available): {{ list_current_state | default([]) }}
++      - If "negotiation_from_script" is present in current states, Post-IDV is likely active.
++      - Mini-Miranda language in transcript is a strong cue that Post-IDV has started.
++
+       # Output
+       <reasoning>
+       Your concise reasoning for the classification.
+@@ -5406,7 +5414,7 @@ postcall:
+       ["CALL_CODE_1", "CALL_CODE_2", "CALL_CODE_3"]
+       </call_code_list>
+ 
+-      {% if raw_call_assignment.call_direction_detail not in ["human_outbound", "human_inbound", "transfer_inbound", "transfer_outbound"] and not var_def_not_render and show_reflection_variable_section %}
++      {% if raw_call_assignment.call_direction_detail not in ["human_outbound", "human_inbound", "transfer_inbound", "transfer_outbound"] %}
+       ## Reflection Variable Descriptions
+       ```
+       {{reflection_variable_descriptions}}
+@@ -5423,10 +5431,28 @@ postcall:
+       {{conversation_history}}
+       ```
+ 
+-    # call_code_descriptions — lower index = higher priority when multiple codes qualify.
++    # call_code_descriptions — higher priority appears later in the list (Priority=1 must be near the end).
+     # Codes handled only by postprocess_conditions (PWFR, PNCV, PTSR, PCAB, WFR, FTP, PAY) are omitted here.
+     # Reference: knowledge_base/call_disposition_reference/kompato_CallDispositionReference_CallCodes.md
+     call_code_descriptions:
++      - code: TLM
++        description: |
++          Transfer Loan Modification - Verified customer requests loan-modification assistance that is beyond AI capability. Transfer to Collections representative.
++          Use when: Customer asks for loan-modification options, terms restructuring, payment-term change outside supported AI flow, or explicitly requests a specialist for loan modification.
++          Edge cases: Tie-break vs EPT — use EPT when the limitation is payment assistance capability (amount/method/payment handling). Use TLM when the request is specifically about loan modification options. Tie-break vs HTT — use HTT only when a technical/system failure blocks completion; use TLM when there is no system failure and the request is business-support escalation.
++          Few-shots: Customer says "I need loan modification options, please transfer me" → TLM. Customer asks to restructure loan terms beyond bot capability → TLM.
++      - code: FDP
++        description: |
++          Future Dated Payment - Verified customer schedules a future-dated payment via supported payment flow.
++          Use when: Customer confirms a specific future payment date/time and agrees to execute payment on that future date through supported flow.
++          Edge cases: Tie-break vs PAY — use PAY when payment is completed during this call; use FDP when payment is scheduled for a future date. Tie-break vs PPA — use PPA for structured installment plans or broader payment-plan agreements; use FDP for a scheduled future-dated payment event.
++          Few-shots: Customer says "Schedule my payment for the 25th" and confirms date/time → FDP. Customer schedules payment for next Friday via flow confirmation → FDP.
++      - code: TPM
++        description: |
++          Third-Party Message - A third party answers and the agent leaves a message for the account holder without disclosing account details.
++          Use when: Non-account-holder confirms target person is unavailable, and agent leaves a compliant callback/return-call message with no account disclosure.
++          Edge cases: Tie-break vs TPC — TPC requires third party providing new contact details or actionable recipient-location info; TPM is message-left behavior only. Tie-break vs LM — LM is voicemail/answering-system path; TPM is a live third-party human interaction.
++          Few-shots: Third party says "He's not here," agent leaves callback request → TPM. Family member answers and agrees to pass message, no account details shared → TPM.
+       - code: ECH
+         description: |
+           Robot Call - Pre-recorded call or IVR detected. No human response received. No message left and no transfer initiated.
+@@ -5490,7 +5516,7 @@ postcall:
+       - code: IDF
+         description: |
+           ID Verification Failed - Customer confirms the right name, but DOB/SSN/zip information does not match with data in the system, OR customer refuses to verify their identity through standard verification protocols.
+-          Use when: Customer says "No" when asked if DOB on file is correct (data mismatch). Customer provides a DOB, SSN, or zip that does not match system records. Customer says "No," "Nope," "I'm not giving you that," "I refuse" when asked for DOB/SSN (active refusal while still on the line). Customer confirms they are not the intended person during verification.
++          Use when: Customer says "No" when asked if DOB on file is correct (data mismatch). Customer provides a DOB, SSN, or zip that does not match system records. Customer says "No," "Nope," "I'm not giving you that," "I refuse" when asked for DOB/SSN (active refusal while still on the line). IDF should stay in neutral-to-positive customer confirmation space.
+           Edge cases: Key distinction from HUA — IDF = customer provided WRONG data (DOB/SSN doesn't match) OR customer is still on the line ACTIVELY refusing/engaging (saying "No," asking questions, arguing). HUA = customer confirmed name but the call ENDED (hung up, went silent, line dropped, timed out) during verification — no active engagement, just disconnection. If the customer says "No" to DOB and CONTINUES the conversation (asks questions, argues, refuses more) → IDF. If the customer goes silent and call times out → HUA. If the customer provided wrong data earlier but then the call also drops → still IDF (data mismatch occurred).
+           Few-shots: Customer says "No" to "Is Feb 22 1961 your DOB?" then says "It's not" → IDF (data mismatch). Customer provides SSN 2549 that doesn't match → IDF. Customer says "Nope" repeatedly to DOB while still talking → IDF (active refusal). Customer provides wrong DOB "2 3 65" that doesn't match → IDF (data doesn't match even if conversation continues). Customer says "No" to DOB on file, then provides different DOB + wrong SSN, then goes silent → IDF (data mismatch happened before silence). Customer confirms name, agent asks for DOB, customer goes silent → call ends → HUA (no data provided, just disconnected).
+       - code: NVR
+@@ -5521,10 +5547,10 @@ postcall:
+      
+       - code: INC
+         description: |
+-          Consumer Incapacitated - A third party (or the customer) reports the account holder is deceased, severely ill, hospitalized long-term, or mentally incapacitated.
+-          Use when: Caller states the account holder has passed away (deceased, died). Caller states account holder has a severe or long-term condition preventing engagement (dementia, coma, brain injury, long-term hospitalization, brain fog).
+-          Edge cases: Minor/temporary illness ("they have a cold," "they're sleeping") → NOT INC. "Brain fog" qualifies as mental incapacity → INC. Incapacitation must imply serious, potentially long-term inability to engage.
+-          Few-shots: "She's not available, sir. She's deceased now. This is her husband." → INC. "She has brain fog. How can I help you?" → INC. "She's been in the hospital for a couple of weeks, she's battling cancer." → INC.
++          Consumer Incapacitated - A third party (or the customer) reports the account holder is alive but unable to handle debt-related matters due to severe illness, long-term hospitalization, or mental/physical incapacity.
++          Use when: Caller states account holder has a severe or long-term condition preventing engagement (dementia, coma, brain injury, long-term hospitalization, severe cognitive impairment).
++          Edge cases: Deceased reports belong to DEC, not INC. Minor/temporary illness ("they have a cold," "they're sleeping") → NOT INC. Incapacitation must imply serious, potentially long-term inability to engage.
++          Few-shots: "She has brain fog. How can I help you?" → INC. "She's been in the hospital for a couple of weeks, she's battling cancer." → INC. "He passed away last month." → DEC (not INC).
+ 
+      
+       - code: LGB
+@@ -5543,10 +5569,10 @@ postcall:
+      
+       - code: TSR
+         description: |
+-          Transfer to Representative - Customer explicitly requests to speak with a live person, or a structural handoff to a live agent occurs during the call. Once a transfer request is made or handoff occurs, this code remains the classification for the entire call. IMPORTANT: If the conversation ends with the AI agent transferring to a live agent (e.g., "Let me connect you with a live agent"), this is ALWAYS TSR regardless of what happened earlier in the call.
+-          Use when: Customer says "customer service," "representative," "human," "operator," "transfer me," or similar. Agent says "while I check availability for a live agent" followed by a live person introduction. Transfer request is made even if the virtual assistant fails to fulfill it. ALSO use when the AI agent initiates a transfer to a live agent due to a system failure (e.g., payment processing error, unable to retrieve payment information, "The system can not retrieve your payment information") — this is a structural handoff even though the customer did not request it. RULE: Look at the FINAL outcome of the call. If the call ends with a transfer to a live agent, classify as TSR — not the code that was applicable before the transfer.
+-          Edge cases: TSR overrides IDV, NCV, CAB, PPIF, PSIF, PPA, NNP, RTP, and other standard operational codes. CRITICAL OVERRIDE: Even if the customer agreed to pay in full (PPIF), provided a PIN, and the system attempted payment — if the payment system FAILED and the AI agent then transfers to a live agent, you MUST select TSR, NOT PPIF. The transfer is the FINAL disposition and supersedes ALL prior payment commitments. Even if the live agent performs verification, updates addresses, or discusses payment, you MUST select TSR. HUA, DIS, CDS still take precedence over TSR. If customer refuses secondary verification AND requests live agent → HUA (not TSR; refusal takes precedence). Once transfer request is made or system-initiated handoff occurs, TSR remains classification regardless of prior payment commitments or subsequent content. Key indicators: "Let me connect you with a live agent," "while I check availability," "customer service," "The system can not retrieve your payment information."
+-          Few-shots: Customer agrees to pay full $2112.50, provides PIN 123456, system repeatedly says "retrieving your payment information," then fails and agent says "The system can not retrieve your payment information. Let me connect you with a live agent" → TSR (NOT PPIF — the transfer at the END of the call is the final disposition, overriding the earlier payment commitment). Customer says "customer service" at the start, then agent transfers to live person who handles the whole call → TSR. Customer says "Representative. Representative." and agent fails to transfer → TSR. Customer says "I want a person" while refusing DOB → HUA (not TSR).
++          Transfer to Representative (Post-IDV) - Customer requests a live person or a structural handoff to a live agent occurs after the call is in post-IDV flow.
++          Use when: Transfer is triggered in post-IDV context and final transfer outcome is connected to a human representative.
++          Edge cases: Pre-IDV transfer maps to PTSR via postprocess_conditions. If transfer is attempted but not connected, use WFR (post-IDV) or PWFR (pre-IDV). If customer refuses verification and requests live agent, use HUA/IDF based on evidence.
++          Few-shots: Post-IDV customer requests "representative," transfer connects → TSR. Payment flow fails, bot escalates to live agent, transfer connects in post-IDV path → TSR. Transfer requested but no connected signal → WFR/PWFR (not TSR).
+ 
+ 
+      
+@@ -5589,14 +5615,14 @@ postcall:
+         description: |
+           Attorney Representation - Customer stated they have retained or are seeking legal counsel, or legal representation is indicated through any signal in the conversation.
+           Use when: Customer mentions "my attorney," "I'm getting a lawyer," "my attorney has contacted you," or references a POA/legal authority. Agent prompts caller for proof of POA or legal representation documentation. Multiple or repeated references to an attorney, even if brief or fragmented. Consumer indicates attorney involvement even indirectly or amidst emotional distress.
+-          Edge cases: ATY takes priority over ALL other codes including RTP. Fragmented speech about attorney ("her attorney," even amidst distress) still qualifies — scan the ENTIRE conversation for any mention of "attorney," "lawyer," or "legal counsel." Agent's prompt for POA is a secondary signal even if caller gives unclear response. Distinguish from LGH — ATY = specific attorney/legal counsel mentioned; LGH = general guardian without specific attorney reference. CRITICAL DISTINCTION FROM DSA — If the customer uses the word "lawyer" or "attorney" ANYWHERE in their description, classify as ATY even if they also mention debt consolidation/settlement context. "Debt consolidation LAWYER" = ATY (the word "lawyer" is the decisive signal). Only use DSA if the customer names a financial program/agency WITHOUT any mention of a lawyer or attorney.
++          Edge cases: ATY captures explicit attorney engagement or intent to seek one. Distinguish from LGH — ATY = specific attorney/legal counsel mentioned; LGH = guardian/POA handling without attorney framing. Distinguish from DSA — keep DSA priority for debt-settlement-program handling unless attorney/legal counsel is explicitly the primary representation path.
+           Few-shots: Customer says "Talk to my lawyer" → ATY. Customer says "I turned my account over to a debt consolidate lawyer" → ATY (word "lawyer" overrides "debt consolidate"). Fragmented speech "on her journey... her attorney" → ATY. Customer says "I'm working with National Debt Relief" (no mention of lawyer) → DSA (not ATY).
+      
+       - code: DIS
+         description: |
+           Debt Disputed - The customer explicitly challenged the accuracy, validity, or legitimacy of the debt itself. This includes explicitly stating the debt is not theirs, the amount is wrong, previous payments are not reflected, or asserting the debt is void, canceled, settled, or legally discharged. This code also applies if the customer challenges the creditor's right to collect or the legality of the debt transfer (e.g., "sold without consent"). DIS takes precedence over CAB if the customer disputes the debt even if a callback is scheduled.
+           Use when: Customer explicitly states the debt is not theirs, the amount is wrong, previous payments are not reflected, or asserts the debt is void/canceled/settled. Also applies when customer claims not to recognize the amount or implies the balance is incorrect (e.g., "I wasn't aware it was that much"). If a customer requests to stop contact specifically because they dispute the debt (e.g., "Stop calling, I don't owe this"), classify as DIS.
+-          Edge cases: CRITICAL — Do NOT classify as DIS if the customer is merely complaining about HOW they were contacted (confusing texts, unclear SMS, spam-looking links). Asking for details because a notification lacked specifics is a communication complaint (CPR), NOT a dispute. A dispute must be an explicit challenge to the DEBT ITSELF — its existence, amount, validity, or legitimacy. Also do NOT classify as DIS for "sticker shock" (e.g., "Wow, that's a lot") without questioning accuracy. Do NOT apply if customer made a payment within the last 14 days. If the customer expresses willingness to pay (e.g., "I was gonna pay") while complaining about notifications, this is strong evidence AGAINST DIS — use CPR instead.
++          Edge cases: CRITICAL — Do NOT classify as DIS if the customer is merely complaining about HOW they were contacted (confusing texts, unclear SMS, spam-looking links). Asking for details because a notification lacked specifics is a communication complaint (CPR), NOT a dispute. A dispute must be an explicit challenge to the DEBT ITSELF — its existence, amount, validity, or legitimacy. Also do NOT classify as DIS for "sticker shock" (e.g., "Wow, that's a lot") without questioning accuracy. DIS and PPA are opposite planes: DIS challenges debt validity/amount; PPA confirms willingness to resolve via payment terms.
+           Few-shots: Customer says "I don't owe this money" → DIS. Customer says "The text didn't say who this was for" but asks for payment address → CPR (not DIS). Customer says "I wasn't aware it was that much" → DIS.
+      
+       - code: FRA
+@@ -5616,9 +5642,9 @@ postcall:
+       - code: PPA
+         description: |
+           Payment Plan Agreed - Customer agreed to a structured payment plan with specific terms (amounts, frequency, and duration) for resolving the debt. Also applies when the customer agreed to pay, the DTMF payment flow was initiated but failed, and the call ended BEFORE a transfer to a live agent was triggered.
+-          Use when: Customer formally accepts a structured payment arrangement with defined payment amounts and schedule. Customer mentions a payment made within the last 14 days via any channel, providing payment date and amount. Also use when the customer agreed to pay, the system initiated DTMF payment but it failed (e.g., PIN authentication failed, payment instrument retrieval failed), and the call ended/hung up before the system could trigger a transfer to a live agent. The payment was attempted but failed, and no transfer followed.
++          Use when: Customer formally accepts a structured payment arrangement with defined payment amounts and schedule. Also use when the customer agreed to pay, the system initiated DTMF payment but it failed (e.g., PIN authentication failed, payment instrument retrieval failed), and the call ended/hung up before the system could trigger a transfer to a live agent. The payment was attempted but failed, and no transfer followed.
+           Edge cases: Special case — customer unable to respond at the time and requests later contact → same PPA classification applies. Requires clear, focused confirmation of payment terms — casual "yeah" or "okay" as filler while distracted does NOT qualify. CRITICAL DISTINCTION — PPA applies when DTMF payment failed AND call ended before transfer was triggered. If transfer WAS triggered → use TSR (connected) or WFR (busy) instead. If DTMF failed and no transfer and no hang-up → use FTP.
+-          Few-shots: Customer agrees to $50/month for 6 months and gets transferred to payment → PPA. Customer says "I already paid $100 last week via check" with details → PPA. Customer agrees to pay full $500, enters DTMF, PIN fails, call hangs up before transfer is triggered → PPA (not PPIF, not FTP). Customer says "yeah, sure" while talking about unrelated topics → NOT PPA.
++          Few-shots: Customer agrees to $50/month for 6 months and gets transferred to payment → PPA. Customer agrees to pay full $500, enters DTMF, PIN fails, call hangs up before transfer is triggered → PPA (not PPIF, not FTP). Customer says "yeah, sure" while talking about unrelated topics → NOT PPA.
+      
+       - code: SIF
+         description: |
+@@ -5739,13 +5765,13 @@ postcall:
+         description: pre-RPC wait for representative
+         condition: "{{ dict_variable.rpc not in ['wrong_number', 'not'] }} and '{{call_code}}' != 'WRN' and '{{ dict_variable.warm_transfer_sent }}' == 'yes' and '{{ dict_variable.transfer_result }}' != 'connected' and {{ 'negotiation_from_script' not in list_current_state }} "
+       - code: FTP # 14
+-        description: Fail to pay via DTMF, but not transfer to Human agent or
++        description: Fail to pay via DTMF with explicit failure signal and no successful transfer to a human agent
+         condition: >-
+           (
+-            ('{{dict_variable.payment_init}}' == 'True' and '{{dict_variable.payment_result}}' != 'success') or
+-            ('{{dict_variable.payment_init}}' != 'True' and '{{dict_variable.first_payment_amount}}' not in ['', 'unknown'])
++            ('{{dict_variable.payment_init | default("unknown")}}' == 'True' and '{{dict_variable.payment_result | default("unknown")}}' not in ['success', 'unknown', '']) or
++            ('{{dict_variable.payment_init | default("unknown")}}' != 'True' and '{{dict_variable.first_payment_amount | default("unknown")}}' not in ['', 'unknown', 'none', 'null'])
+           ) and
+-          '{{ dict_variable.transfer_result }}' != 'connected'
++          '{{ dict_variable.transfer_result | default("unknown") }}' != 'connected'
+ 
+   # Extra info extraction agent
+   extract_info_agent_configs:

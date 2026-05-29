@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "atlassian": {
+      "type": "http",
+      "url": "https://mcp.atlassian.com/v1/mcp"
+    },
+    "datadog": {
+      "type": "http",
+      "url": "https://mcp.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=all"
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/"
+    },
+    "google-sheets-sa": {
+      "command": "/Users/binh.nguyen2/miniconda3/envs/dev/bin/mcp-google-sheets",
+      "env": {
+        "SERVICE_ACCOUNT_PATH": "/Users/binh.nguyen2/working/postcall/src/sa.json"
+      }
+    },
+    "google-sheets-user": {
+      "command": "/Users/binh.nguyen2/miniconda3/envs/dev/bin/mcp-google-sheets",
+      "env": {
+        "CREDENTIALS_PATH": "/Users/binh.nguyen2/working/postcall/src/google_oauth_credentials.json",
+        "TOKEN_PATH": "/Users/binh.nguyen2/working/postcall/src/google_oauth_token.json"
+      }
+    }
+  }
+}

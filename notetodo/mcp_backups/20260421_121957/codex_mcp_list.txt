@@ -1,0 +1,9 @@
+Name                Command                                                        Args  Env                                       Cwd  Status   Auth       
+google-sheets       /Users/binh.nguyen2/miniconda3/envs/dev/bin/mcp-google-sheets  -     SERVICE_ACCOUNT_PATH=*****                -    enabled  Unsupported
+google-sheets-sa    /Users/binh.nguyen2/miniconda3/envs/dev/bin/mcp-google-sheets  -     SERVICE_ACCOUNT_PATH=*****                -    enabled  Unsupported
+google-sheets-user  /Users/binh.nguyen2/miniconda3/envs/dev/bin/mcp-google-sheets  -     CREDENTIALS_PATH=*****, TOKEN_PATH=*****  -    enabled  Unsupported
+
+Name       Url                                                                 Bearer Token Env Var  Status   Auth        
+atlassian  https://mcp.atlassian.com/v1/mcp                                    -                     enabled  Unsupported 
+datadog    https://mcp.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=all  -                     enabled  Unsupported 
+github     https://api.githubcopilot.com/mcp/                                  GITHUB_TOKEN          enabled  Bearer token
